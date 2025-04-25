@@ -2,8 +2,8 @@ name: Run Python script periodically
 
 on:
   schedule:
-    # Exécute le script toutes les 30 minutes
-    - cron: '0 30 * * *' 
+    # Exécute le script toutes les 30 minutes (à la 0e et 30e minute de chaque heure)
+    - cron: '*/30 * * * *'  # toutes les 30 minutes en UTC
 
   # Permet de déclencher l'action manuellement si nécessaire
   workflow_dispatch:
@@ -13,22 +13,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout le code
+      # Checkout du code
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Installer Python et les dépendances
+      # Installer Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.x'
 
+      # Installer les dépendances
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       # Exécuter le script Python
       - name: Run script
-        run: |
-          python script.py
+        run: python script.py
