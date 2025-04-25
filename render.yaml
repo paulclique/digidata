@@ -1,0 +1,7 @@
+services:
+  - type: cron
+    name: scraper-playwright
+    schedule: "*/30 * * * *"  # Toutes les 30 minutes
+    env: python
+    buildCommand: "pip install -r requirements.txt && playwright install"
+    startCommand: "python script.py"
