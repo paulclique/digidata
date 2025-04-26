@@ -2,8 +2,9 @@ name: Run Python script periodically
 
 on:
   schedule:
-    # Exécute le script toutes les 30 minutes
-    - cron: '*/30 * * * *'
+    - cron: '0 7-23 * * *'    # à chaque heure pile de 7h à 23h
+    - cron: '30 7-23 * * *'   # à chaque demi-heure de 7h30 à 23h30
+    - cron: '59 23 * * *'     # à 23:59
   workflow_dispatch:
 
 jobs:
@@ -38,13 +39,15 @@ jobs:
       # Étape 5 : Générer automatiquement le fichier .env
       - name: Create .env file
         run: |
-          echo "user=${{ secrets.DB_USER }}" >> .env
-          echo "password=${{ secrets.DB_PASS }}" >> .env
-          echo "host=${{ secrets.DB_HOST }}" >> .env
-          echo "dbname=${{ secrets.DB_NAME }}" >> .env
-          echo "port=${{ secrets.DB_PORT }}" >> .env
-          echo "DIGIFOOD_EMAIL=${{ secrets.DIGIFOOD_EMAIL }}" >> .env
-          echo "DIGIFOOD_PASSWORD=${{ secrets.DIGIFOOD_PASSWORD }}" >> .env
+          cat > .env << EOL
+          user=${{ secrets.USER }}
+          password=${{ secrets.PASSWORD }}
+          host=${{ secrets.HOST }}
+          dbname=${{ secrets.DBNAME }}
+          port=${{ secrets.PORT }}
+          DIGIFOOD_EMAIL=${{ secrets.DIGIFOOD_EMAIL }}
+          DIGIFOOD_PASSWORD=${{ secrets.DIGIFOOD_PASSWORD }}
+          EOL
           
       # Étape 6 : Exécuter le script Python
       - name: Run script
