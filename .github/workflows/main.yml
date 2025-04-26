@@ -29,7 +29,13 @@ jobs:
           playwright install chromium
           playwright install-deps
 
-      # Étape 4 : Générer automatiquement le fichier .env
+      # Étape 4 : Installer et démarrer Xvfb
+      - name: Install and start Xvfb
+        run: |
+          sudo apt-get install -y xvfb
+          Xvfb :99 -screen 0 1024x768x24 &
+
+      # Étape 5 : Générer automatiquement le fichier .env
       - name: Create .env file
         run: |
           echo "user=${{ secrets.DB_USER }}" >> .env
@@ -40,14 +46,9 @@ jobs:
           echo "DIGIFOOD_EMAIL=${{ secrets.DIGIFOOD_EMAIL }}" >> .env
           echo "DIGIFOOD_PASSWORD=${{ secrets.DIGIFOOD_PASSWORD }}" >> .env
           
-      # Étape 5 : Exécuter le script Python
+      # Étape 6 : Exécuter le script Python
       - name: Run script
         run: |
           python script.py
         env:
           DISPLAY: :99
-      # Étape 6 : Installer et démarrer Xvfb
-      - name: Install and start Xvfb
-        run: |
-          sudo apt-get install -y xvfb
-          Xvfb :99 -screen 0 1024x768x24 &

@@ -216,6 +216,7 @@ def telecharger_rapport():
     DOWNLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as p:
+        print("Lancement du navigateur en mode headless...")
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
             ignore_https_errors=True,
@@ -224,19 +225,35 @@ def telecharger_rapport():
         page = context.new_page()
 
         try:
-            print("Connexion à Digifood")
+            print("Connexion à Digifood...")
             page.goto("https://app.digifood.fr/location_OUZSMG1QVkt2MWlRT1ZwR3ZCbUVkdz09/reports")
+            
+            print("Attente du champ de connexion...")
+            page.wait_for_selector('input[name="username"]', timeout=10000)
+            print("Saisie de l'email...")
             page.fill('input[name="username"]', EMAIL)
-            attendre_et_cliquer(page, 'button:has-text("Continuer")')
+            
+            print("Attente du bouton Continuer...")
+            page.wait_for_selector('button:has-text("Continuer")', timeout=10000)
+            print("Clic sur le bouton Continuer...")
+            page.click('button:has-text("Continuer")')
 
-            page.wait_for_selector('input[type="password"]')
+            print("Attente du champ mot de passe...")
+            page.wait_for_selector('input[type="password"]', timeout=10000)
+            print("Saisie du mot de passe...")
             page.fill('input[type="password"]', PASSWORD)
-            attendre_et_cliquer(page, 'button:has-text("Continuer")')
+            
+            print("Attente du bouton Continuer...")
+            page.wait_for_selector('button:has-text("Continuer")', timeout=10000)
+            print("Clic sur le bouton Continuer...")
+            page.click('button:has-text("Continuer")')
 
-            print("Configuration du rapport")
-            page.wait_for_load_state("networkidle")
+            print("Attente du chargement de la page...")
+            page.wait_for_load_state("networkidle", timeout=30000)
 
-            attendre_et_cliquer(page, 'button:has-text("Générer un rapport")')
+            print("Configuration du rapport...")
+            page.wait_for_selector('button:has-text("Générer un rapport")', timeout=10000)
+            page.click('button:has-text("Générer un rapport")')
 
             page.wait_for_selector('.mat-mdc-dialog-container')
             attendre_et_cliquer(page, 'mat-select[id="mat-select-3"]')
