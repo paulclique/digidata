@@ -6,78 +6,34 @@ from pathlib import Path
 import requests
 import json
 import psycopg2
+from zoneinfo import ZoneInfo
+import logging
+
+# Configuration du logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # --- Configuration ---
 load_dotenv()
 
-USER = os.getenv("user")
-DB_PASSWORD = os.getenv("password")
-HOST = os.getenv("host")
-PORT = os.getenv("port")
-DBNAME = os.getenv("dbname")
+# Variables d'environnement avec valeurs par défaut
+USER = os.getenv("user", "")
+DB_PASSWORD = os.getenv("password", "")
+HOST = os.getenv("host", "localhost") 
+PORT = os.getenv("port", "5432")
+DBNAME = os.getenv("dbname", "")
 
-EMAIL = os.getenv("DIGIFOOD_EMAIL")
-PASSWORD = os.getenv("DIGIFOOD_PASSWORD")
+EMAIL = os.getenv("DIGIFOOD_EMAIL", "")
+PASSWORD = os.getenv("DIGIFOOD_PASSWORD", "")
 DOWNLOAD_FOLDER = Path("exports").absolute()
 
-# Connect to the database
-try:
-    print(f"Tentative de connexion à la base de données avec les paramètres suivants :")
-    print(f"Utilisateur : {USER}")
-    print(f"Mot de passe : {DB_PASSWORD}")
-    print(f"Hôte : {HOST}")
-    print(f"Port : {PORT}")
-    print(f"Base de données : {DBNAME}")
-    
-    connection = psycopg2.connect(
-        user=USER,
-        password=DB_PASSWORD,
-        host=HOST,
-        port=PORT,
-        dbname=DBNAME
-    )
-    print("Connection successful!")
-    
-    cursor = connection.cursor()
-    cursor.execute("SELECT NOW();")
-    result = cursor.fetchone()
-    print("Current Time:", result)
-
-    cursor.close()
-    connection.close()
-    print("Connection closed.")
-
-except Exception as e:
-    print(f"Échec de la connexion : {e}")
-    print("Veuillez vérifier vos informations de connexion dans le fichier .env")
-
-def envoyer_donnees_vers_api(sales, api_url, api_key=None):
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-
-    for sale in sales:
-        payload = {
-            "id": sale.get("id"),
-            "date": sale.get("date"),
-            "total": sale.get("total"),
-            "payment_method": sale.get("payment_method"),
-            "location": sale.get("location")
-        }
-
-        response = requests.post(api_url, json=payload, headers=headers)
-
-        if response.status_code == 201:
-            print(f"✅ Vente {sale.get('id')} envoyée avec succès.")
-        else:
-            print(f"❌ Erreur {response.status_code} pour {sale.get('id')} : {response.text}")
-
-def attendre_et_cliquer(page, selector, timeout=5000):
-    page.wait_for_selector(selector, timeout=timeout)
-    page.click(selector)
-
-def inserer_ventes_dans_bdd(data, export_date):
+def get_db_connection():
+    """Établit et retourne une connexion à la base de données"""
     try:
+        logger.info("Tentative de connexion à la base de données...")
         connection = psycopg2.connect(
             user=USER,
             password=DB_PASSWORD,
@@ -85,138 +41,202 @@ def inserer_ventes_dans_bdd(data, export_date):
             port=PORT,
             dbname=DBNAME
         )
-        cursor = connection.cursor()
-        
-        # Vérifier si les données contiennent la clé "Global"
-        if isinstance(data, dict) and "Global" in data:
-            # Calculer les totaux globaux
-            total_shops = len(data["Global"].get("Shops", []))
-            global_total_ht = sum(shop.get("total_ht", 0) for shop in data["Global"].get("Shops", []))
-            global_total = sum(shop.get("total", 0) for shop in data["Global"].get("Shops", []))
-            total_volume = sum(shop.get("volume", 0) for shop in data["Global"].get("Shops", []))
-            total_orders = sum(shop.get("order_count", 0) for shop in data["Global"].get("Shops", []))
-            
-            # Insérer les données dans la table exports
-            cursor.execute("""
-                INSERT INTO exports (
-                    export_date, total_shops, global_total_ht, 
-                    global_total, total_volume, total_orders, raw_data
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (
-                export_date,
-                total_shops,
-                global_total_ht,
-                global_total,
-                total_volume,
-                total_orders,
-                json.dumps(data)
-            ))
-            
-            connection.commit()
-            print("✅ Données insérées avec succès")
-            print(f"Nombre de boutiques : {total_shops}")
-            print(f"Total HT : {global_total_ht}")
-            print(f"Total TTC : {global_total}")
-            print(f"Total volume : {total_volume}")
-            print(f"Total commandes : {total_orders}")
-        else:
-            print("❌ Structure de données invalide : clé 'Global' manquante")
-            print(f"Structure des données reçues : {data}")
-        
+        logger.info("Connexion établie avec succès")
+        return connection
     except Exception as e:
-        print(f"❌ Erreur : {e}")
-        if connection:
-            connection.rollback()
-    finally:
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
+        logger.error(f"Échec de la connexion : {e}")
+        raise
+
+# Test initial de la connexion
+try:
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT NOW();")
+            result = cur.fetchone()
+            logger.info(f"Test de connexion réussi. Heure serveur : {result[0]}")
+except Exception as e:
+    logger.error("Échec du test de connexion initial")
+    logger.error(f"Veuillez vérifier vos informations de connexion dans le fichier .env : {e}")
+
+def envoyer_donnees_vers_api(sales, api_url, api_key=None):
+    """Envoie les données de ventes vers une API externe"""
+    headers = {
+        "Content-Type": "application/json",
+        **({"Authorization": f"Bearer {api_key}"} if api_key else {})
+    }
+
+    for sale in sales:
+        try:
+            payload = {
+                "id": sale.get("id"),
+                "date": sale.get("date"),
+                "total": sale.get("total"),
+                "payment_method": sale.get("payment_method"),
+                "location": sale.get("location")
+            }
+
+            response = requests.post(api_url, json=payload, headers=headers)
+            response.raise_for_status()
+            logger.info(f"✅ Vente {sale.get('id')} envoyée avec succès")
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Erreur lors de l'envoi de la vente {sale.get('id')}: {e}")
+
+def attendre_et_cliquer(page, selector, timeout=5000):
+    """Attend qu'un élément soit visible et clique dessus"""
+    try:
+        page.wait_for_selector(selector, timeout=timeout, state="visible")
+        page.click(selector)
+    except Exception as e:
+        logger.error(f"Erreur lors du clic sur {selector}: {e}")
+        raise
+
+def inserer_ventes_dans_bdd(data, export_date):
+    """Insère les données de ventes dans la base de données"""
+    if not isinstance(data, dict) or "Global" not in data:
+        logger.error("Structure de données invalide: clé 'Global' manquante")
+        logger.debug(f"Structure reçue: {data}")
+        return
+
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                # Calcul des totaux
+                shops = data["Global"].get("Shops", [])
+                totals = {
+                    "shops": len(shops),
+                    "ht": sum(shop.get("total_ht", 0) for shop in shops),
+                    "ttc": sum(shop.get("total", 0) for shop in shops),
+                    "volume": sum(shop.get("volume", 0) for shop in shops),
+                    "orders": sum(shop.get("order_count", 0) for shop in shops)
+                }
+
+                # Insertion des données
+                cur.execute("""
+                    INSERT INTO exports (
+                        export_date, total_shops, global_total_ht,
+                        global_total, total_volume, total_orders, raw_data
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    export_date,
+                    totals["shops"],
+                    totals["ht"],
+                    totals["ttc"],
+                    totals["volume"],
+                    totals["orders"],
+                    json.dumps(data)
+                ))
+                
+                conn.commit()
+                logger.info("✅ Données insérées avec succès")
+                logger.info(f"Statistiques: {totals}")
+
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de l'insertion: {e}")
+        raise
 
 def download_file(file_url):
-    filename = file_url.split("?")[0].split("/")[-1]
-    file_path = DOWNLOAD_FOLDER / filename
+    """Télécharge et traite un fichier depuis une URL"""
+    try:
+        filename = file_url.split("?")[0].split("/")[-1]
+        file_path = DOWNLOAD_FOLDER / filename
 
-    response = requests.get(file_url)
-    with open(file_path, "wb") as file:
-        file.write(response.content)
+        response = requests.get(file_url)
+        response.raise_for_status()
 
-    print(f"Rapport téléchargé : {file_path}")
+        with open(file_path, "wb") as file:
+            file.write(response.content)
 
-    with open(file_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+        logger.info(f"Rapport téléchargé: {file_path}")
 
-    # Extraire la date du nom du fichier
-    # Le format est global_items_PuyduFouFrance_2025-04-23-2025-04-24.json
-    # On prend la dernière date comme date d'export
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        # Extraction de la date du nom de fichier
+        export_date = extraire_date_du_fichier(filename)
+        
+        # Traitement des données
+        export_date_naive = export_date.replace(tzinfo=None, microsecond=0)
+        inserer_ventes_dans_bdd(data, export_date_naive)
+
+        return file_path
+
+    except Exception as e:
+        logger.error(f"Erreur lors du téléchargement/traitement du fichier: {e}")
+        raise
+
+def extraire_date_du_fichier(filename):
+    """Extrait la date d'un nom de fichier"""
     try:
         date_parts = filename.split("_")[-1].split(".")[0].split("-")
-        # On reconstruit la date au format YYYY-MM-DD
         date_str = f"{date_parts[3]}-{date_parts[4]}-{date_parts[5]}"
-        # On combine avec l'heure actuelle
-        export_date = datetime.strptime(date_str, "%Y-%m-%d").replace(
-            hour=datetime.now().hour,
-            minute=datetime.now().minute,
-            second=datetime.now().second
+        now_paris = datetime.now(ZoneInfo("Europe/Paris"))
+        
+        date_part = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=ZoneInfo("Europe/Paris"))
+        export_date = date_part.replace(
+            hour=now_paris.hour,
+            minute=now_paris.minute,
+            second=now_paris.second,
+            microsecond=now_paris.microsecond
         )
-        print(f"Date d'export extraite : {export_date}")
+        logger.info(f"Date d'export extraite: {export_date}")
+        return export_date
+    
     except Exception as e:
-        print(f"Erreur lors de l'extraction de la date : {e}")
-        # Utiliser la date et heure actuelles comme fallback
-        export_date = datetime.now()
-        print(f"Utilisation de la date actuelle comme fallback : {export_date}")
-
-    # Traiter les données
-    inserer_ventes_dans_bdd(data, export_date)
-
-    return file_path
+        logger.warning(f"Erreur lors de l'extraction de la date: {e}")
+        export_date = datetime.now(ZoneInfo("Europe/Paris"))
+        logger.info(f"Utilisation de la date actuelle comme fallback: {export_date}")
+        return export_date
 
 def download_report_from_network(page):
-    print("Attente de la réponse réseau vers l'endpoint '/tasks'")
-
-    with page.expect_response(lambda response: "tasks" in response.url and response.status == 200) as response_info:
-        response = response_info.value
+    """Télécharge le rapport depuis la réponse réseau"""
+    logger.info("Attente de la réponse réseau vers l'endpoint '/tasks'")
 
     try:
-        json_data = response.json()
-        print("Réponse JSON reçue.")
-        print(f"Structure de la réponse : {json_data}")
-
-        if isinstance(json_data, dict) and "data" in json_data:
-            data = json_data["data"]
-            if isinstance(data, list) and len(data) > 0:
-                last_task = data[-1]
-                print(f"Dernière tâche : {last_task}")
-                
-                if isinstance(last_task, dict) and "response" in last_task:
-                    response_data = last_task["response"]
-                    if isinstance(response_data, dict) and "type" in response_data and "file" in response_data:
-                        if response_data["type"] == "file":
-                            file_url = response_data["file"]
-                            print(f"URL du fichier trouvée : {file_url}")
-                            return download_file(file_url)
-                    else:
-                        print("Structure de réponse inattendue dans response_data")
-                else:
-                    print("Structure de tâche inattendue")
-            else:
-                print("La liste data est vide ou n'est pas une liste")
-        else:
-            print("Structure de réponse inattendue au niveau racine")
+        with page.expect_response(
+            lambda response: "tasks" in response.url and response.status == 200
+        ) as response_info:
+            response = response_info.value
+            json_data = response.json()
             
-        print("Aucun fichier valide trouvé dans la réponse.")
+            logger.info("Réponse JSON reçue")
+            logger.debug(f"Structure de la réponse: {json_data}")
+
+            if not isinstance(json_data, dict) or "data" not in json_data:
+                raise ValueError("Structure de réponse invalide")
+
+            data = json_data["data"]
+            if not data or not isinstance(data, list):
+                raise ValueError("Données vides ou invalides")
+
+            last_task = data[-1]
+            logger.debug(f"Dernière tâche: {last_task}")
+
+            if not isinstance(last_task, dict) or "response" not in last_task:
+                raise ValueError("Structure de tâche invalide")
+
+            response_data = last_task["response"]
+            if not isinstance(response_data, dict) or "type" not in response_data or "file" not in response_data:
+                raise ValueError("Structure de réponse_data invalide")
+
+            if response_data["type"] != "file":
+                raise ValueError("Type de réponse incorrect")
+
+            file_url = response_data["file"]
+            logger.info(f"URL du fichier trouvée: {file_url}")
+            return download_file(file_url)
+
     except Exception as e:
-        print(f"Erreur lors de l'analyse de la réponse JSON : {e}")
-        print(f"Type de la réponse : {type(json_data)}")
-        print(f"Contenu de la réponse : {json_data}")
-    
-    return None
+        logger.error(f"Erreur lors de l'analyse de la réponse: {e}")
+        logger.debug(f"Contenu de la réponse: {json_data if 'json_data' in locals() else 'Non disponible'}")
+        return None
 
 def telecharger_rapport():
+    """Fonction principale de téléchargement du rapport"""
     DOWNLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as p:
-        print("Lancement du navigateur en mode headless...")
+        logger.info("Lancement du navigateur en mode headless...")
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
             ignore_https_errors=True,
@@ -226,146 +246,114 @@ def telecharger_rapport():
         page = context.new_page()
 
         try:
-            print("Configuration de la langue en français...")
+            # Configuration initiale
+            logger.info("Configuration de la langue en français...")
             page.goto("https://app.digifood.fr")
             page.evaluate("localStorage.setItem('lang', 'fr')")
             
-            print("Connexion à Digifood...")
+            # Navigation et connexion
+            logger.info("Connexion à Digifood...")
             page.goto("https://app.digifood.fr/location_OUZSMG1QVkt2MWlRT1ZwR3ZCbUVkdz09/reports", wait_until="networkidle")
             
-            print("Attente du champ de connexion...")
-            page.wait_for_selector('input[name="username"]', timeout=30000)
-            print("Saisie de l'email...")
-            page.fill('input[name="username"]', EMAIL)
-            
-            # Attendre que le bouton soit visible et cliquable
-            print("Attente du bouton Continuer...")
-            try:
-                # Essayer plusieurs sélecteurs possibles
-                selectors = [
-                    'button:has-text("Continue")',  # Version anglaise
-                    'button:has-text("Continuer")', # Version française
-                    'button[type="submit"]',
-                    'button.continue-button'
-                ]
-                
-                for selector in selectors:
-                    try:
-                        print(f"Essai avec le sélecteur : {selector}")
-                        page.wait_for_selector(selector, timeout=5000, state="visible")
-                        print(f"Bouton trouvé avec le sélecteur : {selector}")
-                        page.click(selector)
-                        break
-                    except Exception as e:
-                        print(f"Sélecteur {selector} non trouvé : {e}")
-                        continue
-                else:
-                    raise Exception("Aucun sélecteur de bouton n'a fonctionné")
-                    
-            except Exception as e:
-                print(f"Erreur lors de l'attente du bouton Continuer : {e}")
-                print("Tentative de capture d'écran...")
-                page.screenshot(path="error_screenshot.png")
-                raise
+            # Processus de connexion
+            gerer_connexion(page)
 
-            print("Attente du champ mot de passe...")
-            page.wait_for_selector('input[type="password"]', timeout=30000)
-            print("Saisie du mot de passe...")
-            page.fill('input[type="password"]', PASSWORD)
-            
-            print("Attente du bouton Continuer...")
-            try:
-                # Réutiliser la même logique pour le deuxième bouton
-                for selector in selectors:
-                    try:
-                        print(f"Essai avec le sélecteur : {selector}")
-                        page.wait_for_selector(selector, timeout=5000, state="visible")
-                        print(f"Bouton trouvé avec le sélecteur : {selector}")
-                        page.click(selector)
-                        break
-                    except Exception as e:
-                        print(f"Sélecteur {selector} non trouvé : {e}")
-                        continue
-                else:
-                    raise Exception("Aucun sélecteur de bouton n'a fonctionné")
-                    
-            except Exception as e:
-                print(f"Erreur lors de l'attente du bouton Continuer : {e}")
-                print("Tentative de capture d'écran...")
-                page.screenshot(path="error_screenshot.png")
-                raise
+            # Configuration et génération du rapport
+            configurer_et_generer_rapport(page)
 
-            print("Attente du chargement de la page...")
-            page.wait_for_load_state("networkidle", timeout=30000)
-
-            print("Configuration du rapport...")
-            try:
-                selectors_rapport = [
-                    'button:has-text("Générer un rapport")',  # Version française
-                    'button:has-text("Generate report")'      # Version anglaise
-                ]
-                for selector in selectors_rapport:
-                    try:
-                        print(f"Essai avec le sélecteur : {selector}")
-                        page.wait_for_selector(selector, timeout=5000, state="visible")
-                        print(f"Bouton trouvé avec le sélecteur : {selector}")
-                        page.click(selector)
-                        break
-                    except Exception as e:
-                        print(f"Sélecteur {selector} non trouvé : {e}")
-                        continue
-                else:
-                    raise Exception("Aucun sélecteur de bouton de rapport n'a fonctionné")
-            except Exception as e:
-                print(f"Erreur lors de la génération du rapport : {e}")
-                print("Tentative de capture d'écran...")
-                page.screenshot(path="error_screenshot.png")
-                raise
-
-            page.wait_for_selector('.mat-mdc-dialog-container')
-            attendre_et_cliquer(page, 'mat-select[id="mat-select-3"]')
-            attendre_et_cliquer(page, 'mat-option:has-text("Ventes")')
-
-            attendre_et_cliquer(page, 'mat-select[id="mat-select-4"]')
-            attendre_et_cliquer(page, 'mat-option:has-text("Fichier JSON (json)")')
-
-            print("Configuration de la période")
-            today = datetime.now()
-            
-            # Utiliser la période complète de la journée
-            date_debut = today.replace(hour=0, minute=0, second=0)
-            date_fin = today.replace(hour=23, minute=59, second=59)
-
-            print(f"\nDates d'export :")
-            print(f"Date de début : {date_debut}")
-            print(f"Date de fin : {date_fin}")
-
-            page.fill('input[id="mat-input-2"]', date_debut.strftime("%Y-%m-%dT%H:%M"))
-            page.fill('input[id="mat-input-3"]', date_fin.strftime("%Y-%m-%dT%H:%M"))
-
-            # Vérifier les dates saisies
-            date_debut_saisie = page.input_value('input[id="mat-input-2"]')
-            date_fin_saisie = page.input_value('input[id="mat-input-3"]')
-            print(f"\nDates saisies dans le formulaire :")
-            print(f"Date de début saisie : {date_debut_saisie}")
-            print(f"Date de fin saisie : {date_fin_saisie}")
-
-            boutons = page.locator('button')
-            print("Cliquer sur le bouton de génération")
-            boutons.nth(11).click()
-
-            print("Génération du rapport")
-            page.wait_for_timeout(5000)
-
-            print("Téléchargement du rapport")
+            # Téléchargement final
+            logger.info("Téléchargement du rapport")
             download_report_from_network(page)
 
         except Exception as e:
-            print(f"Erreur lors du téléchargement: {str(e)}")
+            logger.error(f"Erreur lors du téléchargement: {e}")
+            page.screenshot(path="error_screenshot.png")
+            raise
         finally:
             browser.close()
 
+def gerer_connexion(page):
+    """Gère le processus de connexion"""
+    selectors = [
+        'button:has-text("Continue")',
+        'button:has-text("Continuer")',
+        'button[type="submit"]',
+        'button.continue-button'
+    ]
+
+    # Première étape: email
+    logger.info("Saisie de l'email...")
+    page.wait_for_selector('input[name="username"]', timeout=30000)
+    page.fill('input[name="username"]', EMAIL)
+    cliquer_bouton_avec_retry(page, selectors, "Continuer (email)")
+
+    # Deuxième étape: mot de passe
+    logger.info("Saisie du mot de passe...")
+    page.wait_for_selector('input[type="password"]', timeout=30000)
+    page.fill('input[type="password"]', PASSWORD)
+    cliquer_bouton_avec_retry(page, selectors, "Continuer (mot de passe)")
+
+    page.wait_for_load_state("networkidle", timeout=30000)
+
+def cliquer_bouton_avec_retry(page, selectors, action_name):
+    """Essaie de cliquer sur un bouton avec plusieurs sélecteurs"""
+    for selector in selectors:
+        try:
+            logger.debug(f"Essai du sélecteur: {selector}")
+            page.wait_for_selector(selector, timeout=5000, state="visible")
+            page.click(selector)
+            logger.info(f"Action {action_name} réussie")
+            return
+        except Exception as e:
+            logger.debug(f"Échec du sélecteur {selector}: {e}")
+            continue
+    
+    raise Exception(f"Échec de l'action {action_name}: aucun sélecteur n'a fonctionné")
+
+def configurer_et_generer_rapport(page):
+    """Configure et génère le rapport"""
+    logger.info("Configuration du rapport...")
+    
+    # Clic sur le bouton de génération
+    selectors_rapport = [
+        'button:has-text("Générer un rapport")',
+        'button:has-text("Generate report")'
+    ]
+    cliquer_bouton_avec_retry(page, selectors_rapport, "Générer rapport")
+
+    # Configuration des options
+    page.wait_for_selector('.mat-mdc-dialog-container')
+    attendre_et_cliquer(page, 'mat-select[id="mat-select-3"]')
+    attendre_et_cliquer(page, 'mat-option:has-text("Ventes")')
+    attendre_et_cliquer(page, 'mat-select[id="mat-select-4"]')
+    attendre_et_cliquer(page, 'mat-option:has-text("Fichier JSON (json)")')
+
+    # Configuration de la période
+    logger.info("Configuration de la période")
+    today = datetime.now()
+    date_debut = today.replace(hour=0, minute=0, second=0)
+    date_fin = today.replace(hour=23, minute=59, second=59)
+
+    logger.info(f"Période d'export: {date_debut} - {date_fin}")
+    
+    page.fill('input[id="mat-input-2"]', date_debut.strftime("%Y-%m-%dT%H:%M"))
+    page.fill('input[id="mat-input-3"]', date_fin.strftime("%Y-%m-%dT%H:%M"))
+
+    # Vérification des dates
+    verifier_dates_saisies(page)
+
+    # Génération finale
+    logger.info("Lancement de la génération")
+    page.locator('button').nth(11).click()
+    page.wait_for_timeout(5000)
+
+def verifier_dates_saisies(page):
+    """Vérifie que les dates ont été correctement saisies"""
+    date_debut = page.input_value('input[id="mat-input-2"]')
+    date_fin = page.input_value('input[id="mat-input-3"]')
+    logger.info(f"Dates saisies - Début: {date_debut}, Fin: {date_fin}")
+
 if __name__ == "__main__":
-    print("\n=== Export de la journée (00:00-23:59) ===")
+    logger.info("\n=== Export de la journée (00:00-23:59) ===")
     telecharger_rapport()
-    print("=== Export terminé ===\n")
+    logger.info("=== Export terminé ===\n")
