@@ -2,9 +2,42 @@ name: Run Python script periodically
 
 on:
   schedule:
-    - cron: '0 7-23 * * *'    # à chaque heure pile de 7h à 23h
-    - cron: '30 7-23 * * *'   # à chaque demi-heure de 7h30 à 23h30
-    - cron: '59 23 * * *'     # à 23:59
+    # Chaque heure pile de 7h00 à 23h00
+    - cron: '0 8 * * *'
+    - cron: '0 9 * * *'
+    - cron: '0 10 * * *'
+    - cron: '0 11 * * *'
+    - cron: '0 12 * * *'
+    - cron: '0 13 * * *'
+    - cron: '0 14 * * *'
+    - cron: '0 15 * * *'
+    - cron: '0 16 * * *'
+    - cron: '0 17 * * *'
+    - cron: '0 18 * * *'
+    - cron: '0 19 * * *'
+    - cron: '0 20 * * *'
+    - cron: '0 21 * * *'
+    - cron: '0 22 * * *'
+    - cron: '0 23 * * *'
+    
+    # Chaque demi-heure de 7h30 à 23h30
+    - cron: '30 11 * * *'
+    - cron: '30 12 * * *'
+    - cron: '30 13 * * *'
+    - cron: '30 14 * * *'
+    - cron: '30 15 * * *'
+    - cron: '30 16 * * *'
+    - cron: '30 17 * * *'
+    - cron: '30 18 * * *'
+    - cron: '30 19 * * *'
+    - cron: '30 20 * * *'
+    - cron: '30 21 * * *'
+    - cron: '30 22 * * *'
+    - cron: '30 23 * * *'
+
+    # À 23h59
+    - cron: '59 23 * * *'
+
   workflow_dispatch:
 
 jobs:
@@ -22,7 +55,16 @@ jobs:
         with:
           python-version: '3.x'
 
-      # Étape 3 : Installer les dépendances
+      # Étape 3 : Cache des dépendances pip
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # Étape 4 : Installer les dépendances
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -30,13 +72,13 @@ jobs:
           playwright install chromium
           playwright install-deps
 
-      # Étape 4 : Installer et démarrer Xvfb
+      # Étape 5 : Installer et démarrer Xvfb
       - name: Install and start Xvfb
         run: |
           sudo apt-get install -y xvfb
           Xvfb :99 -screen 0 1024x768x24 &
 
-      # Étape 5 : Générer automatiquement le fichier .env
+      # Étape 6 : Générer automatiquement le fichier .env
       - name: Create .env file
         run: |
           cat > .env << EOL
@@ -48,8 +90,8 @@ jobs:
           DIGIFOOD_EMAIL=${{ secrets.DIGIFOOD_EMAIL }}
           DIGIFOOD_PASSWORD=${{ secrets.DIGIFOOD_PASSWORD }}
           EOL
-          
-      # Étape 6 : Exécuter le script Python
+
+      # Étape 7 : Exécuter le script Python
       - name: Run script
         run: |
           python script.py
