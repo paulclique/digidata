@@ -216,7 +216,7 @@ def telecharger_rapport():
     DOWNLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        browser = p.chromium.launch(headless=True)
         context = browser.new_context(
             ignore_https_errors=True,
             accept_downloads=True
