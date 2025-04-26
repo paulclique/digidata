@@ -220,40 +220,107 @@ def telecharger_rapport():
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
             ignore_https_errors=True,
-            accept_downloads=True
+            accept_downloads=True,
+            viewport={'width': 1920, 'height': 1080}
         )
         page = context.new_page()
 
         try:
+            print("Configuration de la langue en français...")
+            page.goto("https://app.digifood.fr")
+            page.evaluate("localStorage.setItem('lang', 'fr')")
+            
             print("Connexion à Digifood...")
-            page.goto("https://app.digifood.fr/location_OUZSMG1QVkt2MWlRT1ZwR3ZCbUVkdz09/reports")
+            page.goto("https://app.digifood.fr/location_OUZSMG1QVkt2MWlRT1ZwR3ZCbUVkdz09/reports", wait_until="networkidle")
             
             print("Attente du champ de connexion...")
-            page.wait_for_selector('input[name="username"]', timeout=10000)
+            page.wait_for_selector('input[name="username"]', timeout=30000)
             print("Saisie de l'email...")
             page.fill('input[name="username"]', EMAIL)
             
+            # Attendre que le bouton soit visible et cliquable
             print("Attente du bouton Continuer...")
-            page.wait_for_selector('button:has-text("Continuer")', timeout=10000)
-            print("Clic sur le bouton Continuer...")
-            page.click('button:has-text("Continuer")')
+            try:
+                # Essayer plusieurs sélecteurs possibles
+                selectors = [
+                    'button:has-text("Continue")',  # Version anglaise
+                    'button:has-text("Continuer")', # Version française
+                    'button[type="submit"]',
+                    'button.continue-button'
+                ]
+                
+                for selector in selectors:
+                    try:
+                        print(f"Essai avec le sélecteur : {selector}")
+                        page.wait_for_selector(selector, timeout=5000, state="visible")
+                        print(f"Bouton trouvé avec le sélecteur : {selector}")
+                        page.click(selector)
+                        break
+                    except Exception as e:
+                        print(f"Sélecteur {selector} non trouvé : {e}")
+                        continue
+                else:
+                    raise Exception("Aucun sélecteur de bouton n'a fonctionné")
+                    
+            except Exception as e:
+                print(f"Erreur lors de l'attente du bouton Continuer : {e}")
+                print("Tentative de capture d'écran...")
+                page.screenshot(path="error_screenshot.png")
+                raise
 
             print("Attente du champ mot de passe...")
-            page.wait_for_selector('input[type="password"]', timeout=10000)
+            page.wait_for_selector('input[type="password"]', timeout=30000)
             print("Saisie du mot de passe...")
             page.fill('input[type="password"]', PASSWORD)
             
             print("Attente du bouton Continuer...")
-            page.wait_for_selector('button:has-text("Continuer")', timeout=10000)
-            print("Clic sur le bouton Continuer...")
-            page.click('button:has-text("Continuer")')
+            try:
+                # Réutiliser la même logique pour le deuxième bouton
+                for selector in selectors:
+                    try:
+                        print(f"Essai avec le sélecteur : {selector}")
+                        page.wait_for_selector(selector, timeout=5000, state="visible")
+                        print(f"Bouton trouvé avec le sélecteur : {selector}")
+                        page.click(selector)
+                        break
+                    except Exception as e:
+                        print(f"Sélecteur {selector} non trouvé : {e}")
+                        continue
+                else:
+                    raise Exception("Aucun sélecteur de bouton n'a fonctionné")
+                    
+            except Exception as e:
+                print(f"Erreur lors de l'attente du bouton Continuer : {e}")
+                print("Tentative de capture d'écran...")
+                page.screenshot(path="error_screenshot.png")
+                raise
 
             print("Attente du chargement de la page...")
             page.wait_for_load_state("networkidle", timeout=30000)
 
             print("Configuration du rapport...")
-            page.wait_for_selector('button:has-text("Générer un rapport")', timeout=10000)
-            page.click('button:has-text("Générer un rapport")')
+            try:
+                selectors_rapport = [
+                    'button:has-text("Générer un rapport")',  # Version française
+                    'button:has-text("Generate report")'      # Version anglaise
+                ]
+                for selector in selectors_rapport:
+                    try:
+                        print(f"Essai avec le sélecteur : {selector}")
+                        page.wait_for_selector(selector, timeout=5000, state="visible")
+                        print(f"Bouton trouvé avec le sélecteur : {selector}")
+                        page.click(selector)
+                        break
+                    except Exception as e:
+                        print(f"Sélecteur {selector} non trouvé : {e}")
+                        continue
+                else:
+                    raise Exception("Aucun sélecteur de bouton de rapport n'a fonctionné")
+            except Exception as e:
+                print(f"Erreur lors de la génération du rapport : {e}")
+                print("Tentative de capture d'écran...")
+                page.screenshot(path="error_screenshot.png")
+                raise
 
             page.wait_for_selector('.mat-mdc-dialog-container')
             attendre_et_cliquer(page, 'mat-select[id="mat-select-3"]')
