@@ -339,6 +339,10 @@ def configurer_et_generer_rapport(page):
     page.fill('input[id="mat-input-2"]', date_debut.strftime("%Y-%m-%dT%H:%M"))
     page.fill('input[id="mat-input-3"]', date_fin.strftime("%Y-%m-%dT%H:%M"))
 
+    # Pause pour vérification visuelle des paramètres
+    logger.info("Pause de 5 secondes pour vérification des paramètres...")
+    page.wait_for_timeout(5000)
+
     # Vérification des dates
     verifier_dates_saisies(page)
 
