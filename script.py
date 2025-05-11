@@ -237,7 +237,7 @@ def telecharger_rapport():
 
     with sync_playwright() as p:
         logger.info("Lancement du navigateur en mode headless...")
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=False)
         context = browser.new_context(
             ignore_https_errors=True,
             accept_downloads=True,
