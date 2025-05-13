@@ -335,12 +335,8 @@ def configurer_et_generer_rapport(page):
     
     # Ajuster les heures pour compenser le décalage UTC
     # Pour avoir 00:00-23:59 à Paris, on doit envoyer 22:00-21:59 UTC
-    date_debut = now_paris.replace(hour=22, minute=0, second=0, microsecond=0)
-    date_fin = now_paris.replace(hour=21, minute=59, second=59, microsecond=999999)
-
-    # Si on est après 22h à Paris, on doit prendre le jour suivant pour la date de fin
-    if now_paris.hour >= 22:
-        date_fin = date_fin.replace(day=date_fin.day + 1)
+    date_debut = now_paris.replace(hour=0, minute=0, second=0, microsecond=0)
+    date_fin = now_paris.replace(hour=23, minute=59, second=59, microsecond=999999)
 
     logger.info(f"Période d'export (Paris): {date_debut} - {date_fin}")
     
@@ -372,6 +368,15 @@ def verifier_dates_saisies(page):
     now_paris = datetime.now(paris_tz)
     logger.info(f"Heure actuelle à Paris: {now_paris}")
     logger.info(f"Heure actuelle en UTC: {datetime.now(ZoneInfo('UTC'))}")
+    
+    # Vérification que la date de fin est après la date de début
+    try:
+        debut = datetime.strptime(date_debut, "%Y-%m-%dT%H:%M")
+        fin = datetime.strptime(date_fin, "%Y-%m-%dT%H:%M")
+        if fin <= debut:
+            logger.warning("ATTENTION: La date de fin est avant ou égale à la date de début!")
+    except Exception as e:
+        logger.error(f"Erreur lors de la vérification des dates: {e}")
 
 if __name__ == "__main__":
     logger.info("\n=== Export de la journée (00:00-23:59) ===")
