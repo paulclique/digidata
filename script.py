@@ -328,20 +328,25 @@ def configurer_et_generer_rapport(page):
     attendre_et_cliquer(page, 'mat-select[id="mat-select-4"]')
     attendre_et_cliquer(page, 'mat-option:has-text("Fichier JSON (json)")')
 
-    # Configuration de la période
+    # Configuration de la période avec gestion explicite du fuseau horaire
     logger.info("Configuration de la période")
-    today = datetime.now()
-    date_debut = today.replace(hour=0, minute=0, second=0)
-    date_fin = today.replace(hour=23, minute=59, second=59)
-
-    logger.info(f"Période d'export: {date_debut} - {date_fin}")
+    paris_tz = ZoneInfo("Europe/Paris")
+    now_paris = datetime.now(paris_tz)
     
-    page.fill('input[id="mat-input-2"]', date_debut.strftime("%Y-%m-%dT%H:%M"))
-    page.fill('input[id="mat-input-3"]', date_fin.strftime("%Y-%m-%dT%H:%M"))
+    # Créer les dates de début et fin en utilisant le fuseau horaire de Paris
+    date_debut = now_paris.replace(hour=0, minute=0, second=0, microsecond=0)
+    date_fin = now_paris.replace(hour=23, minute=59, second=59, microsecond=999999)
 
-    # # Pause pour vérification visuelle des paramètres
-    # logger.info("Pause de 5 secondes pour vérification des paramètres...")
-    # page.wait_for_timeout(5000)
+    logger.info(f"Période d'export (Paris): {date_debut} - {date_fin}")
+    
+    # Convertir en format ISO pour l'input
+    date_debut_iso = date_debut.strftime("%Y-%m-%dT%H:%M")
+    date_fin_iso = date_fin.strftime("%Y-%m-%dT%H:%M")
+    
+    logger.info(f"Dates formatées pour l'input: {date_debut_iso} - {date_fin_iso}")
+    
+    page.fill('input[id="mat-input-2"]', date_debut_iso)
+    page.fill('input[id="mat-input-3"]', date_fin_iso)
 
     # Vérification des dates
     verifier_dates_saisies(page)
@@ -355,7 +360,12 @@ def verifier_dates_saisies(page):
     """Vérifie que les dates ont été correctement saisies"""
     date_debut = page.input_value('input[id="mat-input-2"]')
     date_fin = page.input_value('input[id="mat-input-3"]')
-    logger.info(f"Dates saisies - Début: {date_debut}, Fin: {date_fin}")
+    logger.info(f"Dates saisies dans l'interface - Début: {date_debut}, Fin: {date_fin}")
+    
+    # Vérification supplémentaire des fuseaux horaires
+    paris_tz = ZoneInfo("Europe/Paris")
+    now_paris = datetime.now(paris_tz)
+    logger.info(f"Heure actuelle à Paris: {now_paris}")
 
 if __name__ == "__main__":
     logger.info("\n=== Export de la journée (00:00-23:59) ===")
