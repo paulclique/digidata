@@ -1,6 +1,6 @@
 from playwright.sync_api import sync_playwright
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from pathlib import Path
 import requests
@@ -335,7 +335,8 @@ def configurer_et_generer_rapport(page):
     
     # Ajuster les heures pour avoir 22:00-21:59
     date_debut = now_paris.replace(hour=22, minute=0, second=0, microsecond=0)
-    date_fin = now_paris.replace(hour=21, minute=59, second=59, microsecond=999999)
+    # La date de fin doit être le jour suivant
+    date_fin = (now_paris + timedelta(days=1)).replace(hour=21, minute=59, second=59, microsecond=999999)
 
     logger.info(f"Période d'export (Paris): {date_debut} - {date_fin}")
     
