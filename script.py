@@ -333,10 +333,9 @@ def configurer_et_generer_rapport(page):
     paris_tz = ZoneInfo("Europe/Paris")
     now_paris = datetime.now(paris_tz)
     
-    # Ajuster les heures pour compenser le décalage UTC
-    # Pour avoir 00:00-23:59 à Paris, on doit envoyer 22:00-21:59 UTC
-    date_debut = now_paris.replace(hour=0, minute=0, second=0, microsecond=0)
-    date_fin = now_paris.replace(hour=23, minute=59, second=59, microsecond=999999)
+    # Ajuster les heures pour avoir 22:00-21:59
+    date_debut = now_paris.replace(hour=22, minute=0, second=0, microsecond=0)
+    date_fin = now_paris.replace(hour=21, minute=59, second=59, microsecond=999999)
 
     logger.info(f"Période d'export (Paris): {date_debut} - {date_fin}")
     
