@@ -111,6 +111,12 @@ def inserer_ventes_dans_bdd(data, export_date):
                     "orders": sum(shop.get("order_count", 0) for shop in shops)
                 }
 
+                # S'assurer que la date est en UTC
+                if export_date.tzinfo is None:
+                    export_date = export_date.replace(tzinfo=ZoneInfo("UTC"))
+                elif export_date.tzinfo != ZoneInfo("UTC"):
+                    export_date = export_date.astimezone(ZoneInfo("UTC"))
+
                 # Insertion des données
                 cur.execute("""
                     INSERT INTO exports (
@@ -170,22 +176,24 @@ def extraire_date_du_fichier(filename):
     try:
         date_parts = filename.split("_")[-1].split(".")[0].split("-")
         date_str = f"{date_parts[3]}-{date_parts[4]}-{date_parts[5]}"
-        now_paris = datetime.now(ZoneInfo("Europe/Paris"))
         
-        date_part = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=ZoneInfo("Europe/Paris"))
+        # Créer la date en UTC
+        date_part = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=ZoneInfo("UTC"))
+        now_utc = datetime.now(ZoneInfo("UTC"))
+        
         export_date = date_part.replace(
-            hour=now_paris.hour,
-            minute=now_paris.minute,
-            second=now_paris.second,
-            microsecond=now_paris.microsecond
+            hour=now_utc.hour,
+            minute=now_utc.minute,
+            second=now_utc.second,
+            microsecond=now_utc.microsecond
         )
-        logger.info(f"Date d'export extraite: {export_date}")
+        logger.info(f"Date d'export extraite (UTC): {export_date}")
         return export_date
     
     except Exception as e:
         logger.warning(f"Erreur lors de l'extraction de la date: {e}")
-        export_date = datetime.now(ZoneInfo("Europe/Paris"))
-        logger.info(f"Utilisation de la date actuelle comme fallback: {export_date}")
+        export_date = datetime.now(ZoneInfo("UTC"))
+        logger.info(f"Utilisation de la date actuelle comme fallback (UTC): {export_date}")
         return export_date
 
 def download_report_from_network(page):
